@@ -181,7 +181,6 @@ void median_filter(const std::vector<float>& h_input,
 {
 
 	int kernel_values_1d[25];
-
 	int count;
 	int temp;
 
@@ -192,31 +191,36 @@ void median_filter(const std::vector<float>& h_input,
 	{
 		for (int j = 0; j < (int)countY; j++)
 		{
-			kernel_values_1d[0] = 0;
+			for (int k = 0; k < 25; k++)
+			{
+				kernel_values_1d[k] = 0;
+			}
 			count = 0;
 			for (int x = -a; x <= a; x++)
 			{
 				for (int y = -b; y <= b; y++)
 				{
-					float pixelValue = getValueGlobal(h_input, countX, countY, x + i, y + j);
+					float pixelVal = getValueGlobal(h_input, countX, countY, x + i, y + j);
 
-					if ((count == 0) || (kernel_values_1d[count - 1] <= pixelValue))
+					if ((count == 0) || (kernel_values_1d[count - 1] <= pixelVal))
 					{
-						kernel_values_1d[count] = pixelValue;
+						kernel_values_1d[count] = pixelVal;
 					}
-					else if (kernel_values_1d[count - 1] > pixelValue)
+					else if (kernel_values_1d[count - 1] > pixelVal)
 					{
 						temp = kernel_values_1d[count - 1];
-						kernel_values_1d[count - 1] = pixelValue;
+						kernel_values_1d[count - 1] = pixelVal;
 						kernel_values_1d[count] = temp;
 					}
 					else
 					{
-
+						//do nothing
 					}
 					count++;
 				}
 			}
+
+			//printf("kernel values %d\n", kernel_values_1d[(count - 1) / 2]);
 
 			h_MedianOut[j * countX + i] = kernel_values_1d[(count - 1) / 2];
 		}
@@ -278,6 +282,8 @@ int main(int argc, char** argv) {
 	std:size_t countD = (size_t)(msize2 * msize2);
 	std::size_t size = count * sizeof(float); // Size of data in bytes
 	std::size_t sizeA = countA * sizeof(int);
+	std::size_t sizeB = countB * sizeof(float);
+	std::size_t sizeD = countD * sizeof(float);
 	
 	// structuring element of size 3x3 for dilation, erosion, opening and closing (2D)
 	std::vector<std::vector<int>> structure_element_2d{
@@ -306,11 +312,11 @@ int main(int argc, char** argv) {
 	std::vector<float> h_temp1(count);
 	std::vector<float> h_temp2(count);
 
-	std::vector<float> h_Median1Out(count);
-	std::vector<float> h_Median1OutGpu(count);
+	std::vector<float> h_outputMedian1Cpu(count);
+	std::vector<float> h_outputMedian1Gpu(count);
 
-	std::vector<float> h_Median2Out(count);
-	std::vector<float> h_Median2OutGpu(count);
+	std::vector<float> h_outputMedian2Cpu(count);
+	std::vector<float> h_outputMedian2Gpu(count);
 
 	std::vector<int> h_structure_element(countA);
 
@@ -346,11 +352,11 @@ int main(int argc, char** argv) {
 	memset(h_temp2.data(), 255, size);
 	memset(h_temp1.data(), 255, size);
 
-	memset(h_Median1Out.data(), 255, size);
-	memset(h_Median1OutGpu.data(), 255, size);
+	memset(h_outputMedian1Cpu.data(), 255, size);
+	memset(h_outputMedian1Gpu.data(), 255, size);
 
-	memset(h_Median2Out.data(), 255, size);
-	memset(h_Median2OutGpu.data(), 255, size);
+	memset(h_outputMedian2Cpu.data(), 255, size);
+	memset(h_outputMedian2Gpu.data(), 255, size);
 
 	//GPU
 	queue.enqueueWriteBuffer(d_input, true, 0, size, h_input.data());
@@ -364,8 +370,8 @@ int main(int argc, char** argv) {
 	queue.enqueueWriteBuffer(d_temp1, true, 0, size, h_temp1.data());
 	queue.enqueueWriteBuffer(d_temp2, true, 0, size, h_temp2.data());
 
-	queue.enqueueWriteBuffer(d_outputMedian1Gpu, true, 0, size, h_Median1OutGpu.data());
-	queue.enqueueWriteBuffer(d_outputMedian2Gpu, true, 0, size, h_Median2OutGpu.data());
+	queue.enqueueWriteBuffer(d_outputMedian1Gpu, true, 0, size, h_outputMedian1Gpu.data());
+	queue.enqueueWriteBuffer(d_outputMedian2Gpu, true, 0, size, h_outputMedian2Gpu.data());
 
 	//////// Load input data ////////////////////////////////
 	
@@ -395,8 +401,8 @@ int main(int argc, char** argv) {
 	erosion(h_input, h_structure_element, h_outputErosionCpu, countX, countY);
 	opening(h_input, h_structure_element, h_outputOpeningCpu, countX, countY);
 	closing(h_input, h_structure_element, h_outputClosingCpu, countX, countY);
-	median_filter(h_input, h_Median1Out, countX, countY, msize1);
-	median_filter(h_input, h_Median2Out, countX, countY, msize2);
+	median_filter(h_input, h_outputMedian1Cpu, countX, countY, msize1);
+	median_filter(h_input, h_outputMedian2Cpu, countX, countY, msize2);
 	Core::TimeSpan cpuEnd = Core::getCurrentTime();
 
 	//////// Store CPU output image ///////////////////////////////////
@@ -404,8 +410,8 @@ int main(int argc, char** argv) {
 	Core::writeImagePGM("output_erosion_cpu.pgm", h_outputErosionCpu, countX, countY);
 	Core::writeImagePGM("output_opening_cpu.pgm", h_outputOpeningCpu, countX, countY);
 	Core::writeImagePGM("output_closing_cpu.pgm", h_outputClosingCpu, countX, countY);
-	Core::writeImagePGM("output_median1_cpu.pgm", h_Median1Out, countX, countY);
-	Core::writeImagePGM("output_median2_cpu.pgm", h_Median2Out, countX, countY);
+	Core::writeImagePGM("output_median1_cpu.pgm", h_outputMedian1Cpu, countX, countY);
+	Core::writeImagePGM("output_median2_cpu.pgm", h_outputMedian2Cpu, countX, countY);
 	Core::TimeSpan cpuExecTime = cpuEnd - cpuStart;
 	std::cout << "Execution time on CPU is: " << cpuExecTime << std::endl;
 
@@ -414,6 +420,8 @@ int main(int argc, char** argv) {
 	memset(h_outputErosionGpu.data(), 255, size);
 	memset(h_outputOpeningGpu.data(), 255, size);
 	memset(h_outputClosingGpu.data(), 255, size);
+	memset(h_outputMedian1Gpu.data(), 255, size);
+	memset(h_outputMedian2Gpu.data(), 255, size);
 
 
 	//GPU
@@ -421,6 +429,8 @@ int main(int argc, char** argv) {
 	queue.enqueueWriteBuffer(d_outputErosion, true, 0, size, h_outputErosionGpu.data());
 	queue.enqueueWriteBuffer(d_outputOpening, true, 0, size, h_outputOpeningGpu.data());
 	queue.enqueueWriteBuffer(d_outputClosing, true, 0, size, h_outputClosingGpu.data());
+	queue.enqueueWriteBuffer(d_outputMedian1Gpu, true, 0, size, h_outputMedian1Gpu.data());
+	queue.enqueueWriteBuffer(d_outputMedian2Gpu, true, 0, size, h_outputMedian2Gpu.data());
 
 	// Copy input data to device
 	cl::Event writeEvent[2];
@@ -439,18 +449,15 @@ int main(int argc, char** argv) {
 
 
 	// Create a kernel object
-	std::string kernelName1 = "dilationKernel";
-	std::string kernelName2 = "erosionKernel";
-	std::string kernelName3 = "openingKernel";
-	std::string kernelName4 = "closingKernel";
-
-	cl::Kernel dilationKernel(program, kernelName1.c_str());
-	cl::Kernel erosionKernel(program, kernelName2.c_str());
-	cl::Kernel openingKernel(program, kernelName3.c_str());
-	cl::Kernel closingKernel(program, kernelName4.c_str());
+	cl::Kernel dilationKernel(program, "dilationKernel");
+	cl::Kernel erosionKernel(program, "erosionKernel");
+	cl::Kernel openingKernel(program, "openingKernel");
+	cl::Kernel closingKernel(program, "closingKernel");
+	cl::Kernel median1Kernel(program, "median1Kernel");
+	cl::Kernel median2Kernel(program, "median2Kernel");
 
 	// Launch kernel on the device
-	cl::Event kernelEvent[4];
+	cl::Event kernelEvent[6];
 
 	dilationKernel.setArg<cl::Image2D>(0, image);
 	dilationKernel.setArg<cl::Buffer>(1, d_outputDilation);
@@ -474,12 +481,22 @@ int main(int argc, char** argv) {
 	closingKernel.setArg<cl::Buffer>(3, d_structure_element);
 	queue.enqueueNDRangeKernel(closingKernel, 0, cl::NDRange(countX, countY), cl::NDRange(wgSizeX, wgSizeY), NULL, &kernelEvent[3]);
 
+	median1Kernel.setArg<cl::Image2D>(0, image);
+	median1Kernel.setArg<cl::Buffer>(1, d_outputMedian1Gpu);
+	queue.enqueueNDRangeKernel(median1Kernel, 0, cl::NDRange(countX, countY), cl::NDRange(wgSizeX, wgSizeY), NULL, &kernelEvent[4]);
+
+	median2Kernel.setArg<cl::Image2D>(0, image);
+	median2Kernel.setArg<cl::Buffer>(1, d_outputMedian2Gpu);
+	queue.enqueueNDRangeKernel(median2Kernel, 0, cl::NDRange(countX, countY), cl::NDRange(wgSizeX, wgSizeY), NULL, &kernelEvent[5]);
+
 	// Copy output data back to host
-	cl::Event readEvent[4];
+	cl::Event readEvent[6];
 	queue.enqueueReadBuffer(d_outputDilation, true, 0, size, h_outputDilationGpu.data(), NULL, &readEvent[0]);
 	queue.enqueueReadBuffer(d_outputErosion, true, 0, size, h_outputErosionGpu.data(), NULL, &readEvent[1]);
 	queue.enqueueReadBuffer(d_outputOpening, true, 0, size, h_outputOpeningGpu.data(), NULL, &readEvent[2]);
 	queue.enqueueReadBuffer(d_outputClosing, true, 0, size, h_outputClosingGpu.data(), NULL, &readEvent[3]);
+	queue.enqueueReadBuffer(d_outputMedian1Gpu, true, 0, size, h_outputMedian1Gpu.data(), NULL, &readEvent[4]);
+	queue.enqueueReadBuffer(d_outputMedian2Gpu, true, 0, size, h_outputMedian2Gpu.data(), NULL, &readEvent[5]);
 
 	// Print performance data
 	Core::TimeSpan cpuTime = cpuEnd - cpuStart;
@@ -504,16 +521,20 @@ int main(int argc, char** argv) {
 	std::cout << "GPU Time with memory copy: " << overallGpuTime.toString() << " (speedup = " << (cpuTime.getSeconds() / overallGpuTime.getSeconds()) << ", " << (count / overallGpuTime.getSeconds() / 1e6) << " MPixel/s)" << std::endl;
 
 	//////// Store GPU output image ///////////////////////////////////
-	Core::writeImagePGM("output_dilation_gpu_group4.pgm", h_outputDilationGpu, countX, countY);
-	Core::writeImagePGM("output_erosion_gpu_group4.pgm", h_outputErosionGpu, countX, countY);
-	Core::writeImagePGM("output_opening_gpu_group4.pgm", h_outputOpeningGpu, countX, countY);
-	Core::writeImagePGM("output_closing_gpu_group4.pgm", h_outputClosingGpu, countX, countY);
+	Core::writeImagePGM("output_dilation_gpu.pgm", h_outputDilationGpu, countX, countY);
+	Core::writeImagePGM("output_erosion_gpu.pgm", h_outputErosionGpu, countX, countY);
+	Core::writeImagePGM("output_opening_gpu.pgm", h_outputOpeningGpu, countX, countY);
+	Core::writeImagePGM("output_closing_gpu.pgm", h_outputClosingGpu, countX, countY);
+	Core::writeImagePGM("output_median1_gpu.pgm", h_outputMedian1Gpu, countX, countY);
+	Core::writeImagePGM("output_median2_gpu.pgm", h_outputMedian2Gpu, countX, countY);
 
 	// compare the result of CPU and GPU
 	if (!compareResult(h_outputDilationCpu, "DilationCPU", h_outputDilationGpu, "DilationGpu", countX, countY)) return 1;
 	if (!compareResult(h_outputErosionCpu, "ErosionCPU", h_outputErosionGpu, "ErosionGpu", countX, countY)) return 1;
 	if (!compareResult(h_outputOpeningCpu, "OpeningCPU", h_outputOpeningGpu, "OpeningGpu", countX, countY)) return 1;
 	if (!compareResult(h_outputClosingCpu, "ClosingCPU", h_outputClosingGpu, "ClosingGpu", countX, countY)) return 1;
+	if (!compareResult(h_outputMedian1Cpu, "OpeningCPU", h_outputMedian1Gpu, "Median1Gpu", countX, countY)) return 1;
+	if (!compareResult(h_outputMedian2Cpu, "ClosingCPU", h_outputMedian2Gpu, "Median2Gpu", countX, countY)) return 1;
 
 	std::cout << "Success" << std::endl;
 	
