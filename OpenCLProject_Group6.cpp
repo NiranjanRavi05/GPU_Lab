@@ -1,5 +1,7 @@
 //////////////////////////////////////////////////////////////////////////////
-// OpenCL project: Group 4, Topics - dilation, erosion, opening, closing, Gaussian blurr ( mask dimension - 3x3 and 5x5 ) 
+// OpenCL Lab Project: Group 6
+// 1. Morphological filters: Dilation, Erosion, Opening and Closing
+// 2. Median filter ( masks => 3x3 and 5x5 ) 
 //////////////////////////////////////////////////////////////////////////////
 
 // includes
@@ -27,8 +29,8 @@
 // CPU implementation
 //////////////////////////////////////////////////////////////////////////////
 
-const int msize1 = 3; // size of gaussian mask 1 
-const int msize2 = 5; // size of gaussian mask 2
+const int msize1 = 3; // size of mask 1 
+const int msize2 = 5; // size of mask 2
 
 float getValueGlobal(const std::vector<float>& a, std::size_t countX, std::size_t countY, int i, int j) {
 	if (i < 0 || (size_t)i >= countX || j < 0 || (size_t)j >= countY)
@@ -42,8 +44,8 @@ int getValueMask(const std::vector<int>& b, std::size_t row, std::size_t column,
 		return 0;
 	else
 		return b[j * row + i];
-
 }
+
 //function - compares the result of CPU and GPU 
 bool compareResult(const std::vector<float>& hOutputCPU, const std::string& outputCPU, const std::vector<float>& hOutputGPU, const std::string& outputGPU, std::size_t countX, std::size_t countY) {
 	std::size_t errorCount = 0;
@@ -68,7 +70,7 @@ bool compareResult(const std::vector<float>& hOutputCPU, const std::string& outp
 }
 
 
-// Function - This function perfoms the dilation operation
+// Function used for dilation operation
 void dilation(const std::vector<float>& h_input, 
 	std::vector<int> const& h_structure_element,
 	std::vector<float>& h_outputDilationCpu, 
@@ -105,7 +107,7 @@ void dilation(const std::vector<float>& h_input,
 }
 
 
-// Function - This function perfoms the erosion operation 
+// Function used for erosion operation
 void erosion(const std::vector<float>& h_input, 
 	std::vector<int>& h_structure_element,
 	std::vector<float>& h_outputErosionCpu, 
@@ -142,7 +144,7 @@ void erosion(const std::vector<float>& h_input,
 }
 
 
-// Function - This function perfoms the opening operation.
+// Function used for opening operation
 void opening(const std::vector<float>& h_input, 
 	std::vector<int>& h_structure_element, 
 	std::vector<float>& h_outputOpeningCpu, 
@@ -154,7 +156,8 @@ void opening(const std::vector<float>& h_input,
 	erosion(h_input, h_structure_element,h_temp, countX, countY);
 	dilation(h_temp, h_structure_element, h_outputOpeningCpu, countX, countY);
 }
-// Function - This function perfoms the closing operation.
+
+// Function used for closing operation
 void closing(const std::vector<float>& h_input, 
 	std::vector<int>& h_structure_element, 
 	std::vector<float>& h_outputClosingCpu, 
@@ -165,6 +168,60 @@ void closing(const std::vector<float>& h_input,
 	std::vector<float> h_temp1(count1);
 	dilation(h_input, h_structure_element, h_temp1, countX, countY);
 	erosion(h_temp1, h_structure_element, h_outputClosingCpu, countX, countY);
+}
+
+
+// Function used for median_filter operation
+void median_filter(const std::vector<float>& h_input,
+	std::vector<float>& h_MedianOut,
+	std::size_t countX,
+	std::size_t countY,
+	int msize
+)
+{
+
+	int kernel_values_1d[25];
+
+	int count;
+	int temp;
+
+	float sum = 0.0;
+	int a = (msize - 1) / 2;
+	int b = (msize - 1) / 2;
+	for (int i = 0; i < (int)countX; i++)
+	{
+		for (int j = 0; j < (int)countY; j++)
+		{
+			kernel_values_1d[0] = 0;
+			count = 0;
+			for (int x = -a; x <= a; x++)
+			{
+				for (int y = -b; y <= b; y++)
+				{
+					float pixelValue = getValueGlobal(h_input, countX, countY, x + i, y + j);
+
+					if ((count == 0) || (kernel_values_1d[count - 1] <= pixelValue))
+					{
+						kernel_values_1d[count] = pixelValue;
+					}
+					else if (kernel_values_1d[count - 1] > pixelValue)
+					{
+						temp = kernel_values_1d[count - 1];
+						kernel_values_1d[count - 1] = pixelValue;
+						kernel_values_1d[count] = temp;
+					}
+					else
+					{
+
+					}
+					count++;
+				}
+			}
+
+			h_MedianOut[j * countX + i] = kernel_values_1d[(count - 1) / 2];
+		}
+
+	}
 }
 
 
@@ -215,6 +272,10 @@ int main(int argc, char** argv) {
 	std::size_t count = countX * countY; // Overall number of elements
 	// Number of elements in structuring element which is used for dilation, erosion, opening and closing
 	std::size_t countA =(size_t)(msize1 * msize1);
+	// Number of elements in mask of dimension 3x3
+	std::size_t countB = (size_t)(msize1 * msize1);
+	// Number of elements in mask of dimension 5x5
+	std:size_t countD = (size_t)(msize2 * msize2);
 	std::size_t size = count * sizeof(float); // Size of data in bytes
 	std::size_t sizeA = countA * sizeof(int);
 	
@@ -224,6 +285,9 @@ int main(int argc, char** argv) {
 				{ 1, 1, 1},
 				{ 0, 1, 0}
 	};
+
+	// structuring element of size 3x3 for dilation, erosion, opening and closing (1D)
+	int structure_element_1d[msize1 * msize1];
 
 	// Allocate space for output data from CPU and GPU on the host
 	std::vector<float> h_input(count);
@@ -242,6 +306,12 @@ int main(int argc, char** argv) {
 	std::vector<float> h_temp1(count);
 	std::vector<float> h_temp2(count);
 
+	std::vector<float> h_Median1Out(count);
+	std::vector<float> h_Median1OutGpu(count);
+
+	std::vector<float> h_Median2Out(count);
+	std::vector<float> h_Median2OutGpu(count);
+
 	std::vector<int> h_structure_element(countA);
 
 	// Allocate space for input and output data on the device
@@ -253,6 +323,8 @@ int main(int argc, char** argv) {
 	cl::Buffer d_outputClosing(context, CL_MEM_READ_WRITE, size);
 	cl::Buffer d_temp1(context, CL_MEM_READ_WRITE, size);
 	cl::Buffer d_temp2(context, CL_MEM_READ_WRITE, size);
+	cl::Buffer d_outputMedian1Gpu(context, CL_MEM_READ_WRITE, size);
+	cl::Buffer d_outputMedian2Gpu(context, CL_MEM_READ_WRITE, size);
 	
 	
 	// Initialize memory to 0xff (useful for debugging because otherwise GPU memory will contain information from last execution)
@@ -274,7 +346,12 @@ int main(int argc, char** argv) {
 	memset(h_temp2.data(), 255, size);
 	memset(h_temp1.data(), 255, size);
 
-	
+	memset(h_Median1Out.data(), 255, size);
+	memset(h_Median1OutGpu.data(), 255, size);
+
+	memset(h_Median2Out.data(), 255, size);
+	memset(h_Median2OutGpu.data(), 255, size);
+
 	//GPU
 	queue.enqueueWriteBuffer(d_input, true, 0, size, h_input.data());
 	queue.enqueueWriteBuffer(d_structure_element, true, 0, sizeA, h_structure_element.data());
@@ -287,14 +364,17 @@ int main(int argc, char** argv) {
 	queue.enqueueWriteBuffer(d_temp1, true, 0, size, h_temp1.data());
 	queue.enqueueWriteBuffer(d_temp2, true, 0, size, h_temp2.data());
 
+	queue.enqueueWriteBuffer(d_outputMedian1Gpu, true, 0, size, h_Median1OutGpu.data());
+	queue.enqueueWriteBuffer(d_outputMedian2Gpu, true, 0, size, h_Median2OutGpu.data());
+
 	//////// Load input data ////////////////////////////////
 	
 	std::vector<float> inputData;
 	std::size_t inputWidth, inputHeight;
 	Core::readImagePGM("C:/Personal/Studies/SS2022/GPU Lab/Opencl-Basics-Windows/Opencl-ex1/src/data.pgm", inputData, inputWidth, inputHeight);
-	for (size_t j = 0; j < countY; j++) {
-		for (size_t i = 0; i < countX; i++) {
-			h_input[i + countX * j] = inputData[(i % inputWidth) + inputWidth * (j % inputHeight)];
+	for (size_t i = 0; i < countX; i++) {
+		for (size_t j = 0; j < countY; j++) {
+			h_input[j + countY * i] = inputData[(j % inputWidth) + inputWidth * (i % inputHeight)];
 		}
 	}
 	
@@ -315,13 +395,17 @@ int main(int argc, char** argv) {
 	erosion(h_input, h_structure_element, h_outputErosionCpu, countX, countY);
 	opening(h_input, h_structure_element, h_outputOpeningCpu, countX, countY);
 	closing(h_input, h_structure_element, h_outputClosingCpu, countX, countY);
+	median_filter(h_input, h_Median1Out, countX, countY, msize1);
+	median_filter(h_input, h_Median2Out, countX, countY, msize2);
 	Core::TimeSpan cpuEnd = Core::getCurrentTime();
 
 	//////// Store CPU output image ///////////////////////////////////
-	Core::writeImagePGM("output_dilation_cpu_group4.pgm", h_outputDilationCpu, countX, countY);
-	Core::writeImagePGM("output_erosion_cpu_group4.pgm", h_outputErosionCpu, countX, countY);
-	Core::writeImagePGM("output_opening_cpu_group4.pgm", h_outputOpeningCpu, countX, countY);
-	Core::writeImagePGM("output_closing_cpu_group4.pgm", h_outputClosingCpu, countX, countY); 
+	Core::writeImagePGM("output_dilation_cpu.pgm", h_outputDilationCpu, countX, countY);
+	Core::writeImagePGM("output_erosion_cpu.pgm", h_outputErosionCpu, countX, countY);
+	Core::writeImagePGM("output_opening_cpu.pgm", h_outputOpeningCpu, countX, countY);
+	Core::writeImagePGM("output_closing_cpu.pgm", h_outputClosingCpu, countX, countY);
+	Core::writeImagePGM("output_median1_cpu.pgm", h_Median1Out, countX, countY);
+	Core::writeImagePGM("output_median2_cpu.pgm", h_Median2Out, countX, countY);
 	Core::TimeSpan cpuExecTime = cpuEnd - cpuStart;
 	std::cout << "Execution time on CPU is: " << cpuExecTime << std::endl;
 
