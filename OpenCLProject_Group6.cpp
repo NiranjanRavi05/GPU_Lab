@@ -46,7 +46,7 @@ int getValueMask(const std::vector<int>& b, std::size_t row, std::size_t column,
 		return b[j * row + i];
 }
 
-//function - compares the result of CPU and GPU 
+
 bool compareResult(const std::vector<float>& hOutputCPU, const std::string& outputCPU, const std::vector<float>& hOutputGPU, const std::string& outputGPU, std::size_t countX, std::size_t countY) {
 	std::size_t errorCount = 0;
 	for (size_t j = 0; j < countY; j = j + 1) { //loop in the y-direction
@@ -71,12 +71,8 @@ bool compareResult(const std::vector<float>& hOutputCPU, const std::string& outp
 
 
 // Function used for dilation operation
-void dilation(const std::vector<float>& h_input, 
-	std::vector<int> const& h_structure_element,
-	std::vector<float>& h_outputDilationCpu, 
-	std::size_t countX, 
-	std::size_t countY) {
-
+void dilation(const std::vector<float>& h_input, std::vector<int> const& h_structure_element,std::vector<float>& h_outputDilationCpu, std::size_t countX, std::size_t countY) 
+{
 	float maximum = 0.0f;
 	std::size_t mask_size = 3;
 	for (int i = 0; i < (int)countX; i++)
@@ -101,6 +97,11 @@ void dilation(const std::vector<float>& h_input,
 
 				}
 			}
+			if (maximum <= 0.5)
+				maximum = 0;
+			else
+				maximum = 1;
+
 			h_outputDilationCpu[j * countX + i] = maximum;
 		}
 	}
@@ -108,12 +109,8 @@ void dilation(const std::vector<float>& h_input,
 
 
 // Function used for erosion operation
-void erosion(const std::vector<float>& h_input, 
-	std::vector<int>& h_structure_element,
-	std::vector<float>& h_outputErosionCpu, 
-	std::size_t countX, 
-	std::size_t countY) {
-
+void erosion(const std::vector<float>& h_input, std::vector<int>& h_structure_element,std::vector<float>& h_outputErosionCpu, std::size_t countX, std::size_t countY) 
+{
 	float minimum = 1.0f;
 	std::size_t mask_size = 3;
 	for (int i = 0; i < (int)countX; i++)
@@ -138,6 +135,12 @@ void erosion(const std::vector<float>& h_input,
 
 				}
 			}
+			
+			if (minimum <= 0.5)
+				minimum = 0;
+			else
+				minimum = 1;
+
 			h_outputErosionCpu[j * countX + i] = minimum;
 		}
 	}
@@ -145,86 +148,67 @@ void erosion(const std::vector<float>& h_input,
 
 
 // Function used for opening operation
-void opening(const std::vector<float>& h_input, 
-	std::vector<int>& h_structure_element, 
-	std::vector<float>& h_outputOpeningCpu, 
-	std::size_t countX, 
-	std::size_t countY)
+void opening(const std::vector<float>& h_input, std::vector<int>& h_structure_element, std::vector<float>& h_outputOpeningCpu, std::size_t countX, std::size_t countY)
 {
-	std::size_t count1 = countX * countY;
-	std::vector<float> h_temp(count1);
-	erosion(h_input, h_structure_element,h_temp, countX, countY);
-	dilation(h_temp, h_structure_element, h_outputOpeningCpu, countX, countY);
+	std::size_t count_opening = countX * countY;
+	std::vector<float> h_temp_opening(count_opening);
+	erosion(h_input, h_structure_element, h_temp_opening, countX, countY);
+	dilation(h_temp_opening, h_structure_element, h_outputOpeningCpu, countX, countY);
 }
 
 // Function used for closing operation
-void closing(const std::vector<float>& h_input, 
-	std::vector<int>& h_structure_element, 
-	std::vector<float>& h_outputClosingCpu, 
-	std::size_t countX, 
-	std::size_t countY)
+void closing(const std::vector<float>& h_input, std::vector<int>& h_structure_element, std::vector<float>& h_outputClosingCpu, std::size_t countX, std::size_t countY)
 {
-	std::size_t count1 = countX * countY;
-	std::vector<float> h_temp1(count1);
-	dilation(h_input, h_structure_element, h_temp1, countX, countY);
-	erosion(h_temp1, h_structure_element, h_outputClosingCpu, countX, countY);
+	std::size_t count_closing = countX * countY;
+	std::vector<float> h_temp_closing(count_closing);
+	dilation(h_input, h_structure_element, h_temp_closing, countX, countY);
+	erosion(h_temp_closing, h_structure_element, h_outputClosingCpu, countX, countY);
 }
 
+//Function to perform Sort
+void sort(int array[], int size)
+{
+	int i, j, min;
+	float temp;
+	for (i = 0; i < size - 1; i++)
+	{
+		temp = 0;
+		min = i;
+		for (j = i + 1; j < size; j++)
+			if (array[j] < array[min])
+				min = j;
+		temp = array[min];
+		array[min] = array[i];
+		array[i] = temp;
+
+	}
+}
 
 // Function used for median_filter operation
-void median_filter(const std::vector<float>& h_input,
-	std::vector<float>& h_MedianOut,
-	std::size_t countX,
-	std::size_t countY,
-	int msize
-)
+void median_filter(const std::vector<float>& h_input,std::vector<float>& h_MedianOut,std::size_t countX,std::size_t countY,int msize)
 {
-
 	int kernel_values_1d[25];
 	int count;
 	int temp;
 
 	float sum = 0.0;
 	int a = (msize - 1) / 2;
-	int b = (msize - 1) / 2;
-	for (int i = 0; i < (int)countX; i++)
-	{
-		for (int j = 0; j < (int)countY; j++)
-		{
-			for (int k = 0; k < 25; k++)
-			{
-				kernel_values_1d[k] = 0;
-			}
-			count = 0;
-			for (int x = -a; x <= a; x++)
-			{
-				for (int y = -b; y <= b; y++)
-				{
-					float pixelVal = getValueGlobal(h_input, countX, countY, x + i, y + j);
 
-					if ((count == 0) || (kernel_values_1d[count - 1] <= pixelVal))
-					{
-						kernel_values_1d[count] = pixelVal;
-					}
-					else if (kernel_values_1d[count - 1] > pixelVal)
-					{
-						temp = kernel_values_1d[count - 1];
-						kernel_values_1d[count - 1] = pixelVal;
-						kernel_values_1d[count] = temp;
-					}
-					else
-					{
-						//do nothing
-					}
-					count++;
+	for (int i = 0; i < countX; ++i) {
+		for (int j = 0; j < countY; ++j) {
+			for (int x = i - a; x <= i + a; ++x) {
+				for (int y = j - a; y <= j + a; ++y) {
+					int x_1 = x - i + a;
+					int y_1 = y - j + a;
+
+					kernel_values_1d[x_1 + msize * y_1] = getValueGlobal(h_input, countX, countY, x, y);
 				}
 			}
 
-			//printf("kernel values %d\n", kernel_values_1d[(count - 1) / 2]);
+			sort(kernel_values_1d, msize*msize);
 
-			h_MedianOut[j * countX + i] = kernel_values_1d[(count - 1) / 2];
+			h_MedianOut[j * countX + i] = kernel_values_1d[a + msize * a];
 		}
-
 	}
 }
 
@@ -268,11 +252,15 @@ int main(int argc, char** argv) {
 	// Compile the source code. This is similar to program.build(devices) but will print more detailed error messages
 	OpenCL::buildProgram(program, devices);
 
+	std::vector<float> inputData;
+	std::size_t inputWidth, inputHeight;
+	Core::readImagePGM("C:/Personal/Studies/SS2022/GPU Lab/Opencl-Basics-Windows/Opencl-ex1/src/input_image.pgm", inputData, inputWidth, inputHeight);
+
 	// Declare some values 
 	std::size_t wgSizeX = 20; // Number of work items per work group in X direction
 	std::size_t wgSizeY = 20;
-	std::size_t countX = wgSizeX; // Overall number of work items in X direction = Number of elements in X direction
-	std::size_t countY = wgSizeY;
+	std::size_t countX = wgSizeX * std::size_t(inputWidth/wgSizeX); // Overall number of work items in X direction = Number of elements in X direction
+	std::size_t countY = wgSizeY * std::size_t(inputHeight/wgSizeY);
 	std::size_t count = countX * countY; // Overall number of elements
 	// Number of elements in structuring element which is used for dilation, erosion, opening and closing
 	std::size_t countA =(size_t)(msize1 * msize1);
@@ -374,25 +362,19 @@ int main(int argc, char** argv) {
 	queue.enqueueWriteBuffer(d_outputMedian2Gpu, true, 0, size, h_outputMedian2Gpu.data());
 
 	//////// Load input data ////////////////////////////////
-	
-	std::vector<float> inputData;
-	std::size_t inputWidth, inputHeight;
-	Core::readImagePGM("C:/Personal/Studies/SS2022/GPU Lab/Opencl-Basics-Windows/Opencl-ex1/src/data.pgm", inputData, inputWidth, inputHeight);
 	for (size_t i = 0; i < countX; i++) {
 		for (size_t j = 0; j < countY; j++) {
 			h_input[j + countY * i] = inputData[(j % inputWidth) + inputWidth * (i % inputHeight)];
 		}
 	}
 	
-
 	// convert 2D structuring element into 1D structing element. 
     for (std::size_t i = 0; i < (countA)/3; i++)
 	{
 		for (std::size_t j = 0; j < (countA)/3; j++)
 		{
-			h_structure_element[i * ((countA) / 3 )+ j] = structure_element_2d[i][j];
+			h_structure_element[i * ((countA)/3)+ j] = structure_element_2d[i][j];
 		}
-
 	}
 	
 	// Do calculation on the host side
@@ -533,8 +515,8 @@ int main(int argc, char** argv) {
 	if (!compareResult(h_outputErosionCpu, "ErosionCPU", h_outputErosionGpu, "ErosionGpu", countX, countY)) return 1;
 	if (!compareResult(h_outputOpeningCpu, "OpeningCPU", h_outputOpeningGpu, "OpeningGpu", countX, countY)) return 1;
 	if (!compareResult(h_outputClosingCpu, "ClosingCPU", h_outputClosingGpu, "ClosingGpu", countX, countY)) return 1;
-	if (!compareResult(h_outputMedian1Cpu, "OpeningCPU", h_outputMedian1Gpu, "Median1Gpu", countX, countY)) return 1;
-	if (!compareResult(h_outputMedian2Cpu, "ClosingCPU", h_outputMedian2Gpu, "Median2Gpu", countX, countY)) return 1;
+	if (!compareResult(h_outputMedian1Cpu, "Median1CPU", h_outputMedian1Gpu, "Median1Gpu", countX, countY)) return 1;
+	if (!compareResult(h_outputMedian2Cpu, "Median2CPU", h_outputMedian2Gpu, "Median2Gpu", countX, countY)) return 1;
 
 	std::cout << "Success" << std::endl;
 	

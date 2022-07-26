@@ -30,6 +30,24 @@ float getValueImage(__read_only image2d_t val, int i, int j)
 	return read_imagef(val, sampler, (int2) { i, j }).x;
 }
 
+//Function to perform Sort of numbers in array
+void sort(int array[], int size)
+{
+	int i, j, min;
+	float temp;
+	for (i = 0; i < size - 1; i++)
+	{
+		temp = 0;
+		min = i;
+		for (j = i + 1; j < size; j++)
+			if (array[j] < array[min])
+				min = j;
+		temp = array[min];
+		array[min] = array[i];
+		array[i] = temp;
+	}
+}
+
 
 // Dilation Kernel
 __kernel void dilationKernel(__read_only image2d_t d_input, __global float* d_outputDilation , __global int* d_structure_element) {
@@ -58,13 +76,14 @@ __kernel void dilationKernel(__read_only image2d_t d_input, __global float* d_ou
 				else
 					maximum = pixelVal;
 			}
-
-
 		}
-		
 	}
+	if (maximum <= 0.5)
+		maximum = 0;
+	else
+		maximum = 1;
+
 	d_outputDilation[countX * j + i] = maximum;
-	
 }
 
 //Erosion Kernel
@@ -91,10 +110,14 @@ __kernel void erosionKernel(__read_only image2d_t d_input, __global float* d_out
 				else
 					minimum = pixelVal;
 			}
-
-
 		}
 	}
+
+	if (minimum <= 0.5)
+		minimum = 0;
+	else
+		minimum = 1;
+
 	d_outputErosion[countX * j + i] = minimum;
 }
 
@@ -125,8 +148,6 @@ __kernel void openingKernel(__read_only image2d_t d_input, __global float* d_out
 				else
 					minimum = pixelVal1;
 			}
-
-
 		}
 	}
 	d_temp1[countX * j + i] = minimum; // store the result of erosion in temporary array. It will act as input for dilation operation
@@ -149,13 +170,15 @@ __kernel void openingKernel(__read_only image2d_t d_input, __global float* d_out
 				else
 					maximum = pixelVal2;
 			}
-
-
 		}
 	}
-	d_outputOpening[countX * j + i] = maximum;
 
-	
+	if (maximum <= 0.5)
+		maximum = 0;
+	else
+		maximum = 1;
+
+	d_outputOpening[countX * j + i] = maximum;
 }
 
 // Closing Kernel   
@@ -185,11 +208,9 @@ __kernel void closingKernel(__read_only image2d_t d_input, __global float* d_out
 				else
 					maximum = pixelVal1;
 			}
-
-
 		}
 	}
-	//store the result of dilation in temporary array. It will act as input for erosion operation
+	//store the result of dilation in temporary array. It will act as input for erosion
 	d_temp2[countX * j + i] = maximum;
 	barrier(CLK_GLOBAL_MEM_FENCE); // global barrier
 	// Erosion Operation 
@@ -206,21 +227,98 @@ __kernel void closingKernel(__read_only image2d_t d_input, __global float* d_out
 				else
 					minimum = pixelVal2;
 			}
-         }
+        }
 	}
-	d_outputClosing[countX * j + i] = minimum;
+	if (minimum <= 0.5)
+		minimum = 0;
+	else
+		minimum = 1;
 
+	d_outputClosing[countX * j + i] = minimum;
 }
 
 // Kernel for Median filter dimension 3x3
-__kernel void median1Kernel(__read_only image2d_t d_input, __global float* d_outputMedianGpu)  
-{
+__kernel void median1Kernel(__read_only image2d_t d_input, __global float* d_outputMedianGpu)  {
+	int i = get_global_id(0);
+	int j = get_global_id(1);
+
+	size_t countX = get_global_size(0);
+	size_t countY = get_global_size(1);
+
+	int msize = 3;
+	int kernel_values_m3[9];
+
+	for (int k = 0; k < 9; k++)
+	{
+		kernel_values_m3[k] = 0;
+	}
+
+	for (int x = i-1; x <= i+1; ++x)
+	{
+		for (int y = j-1; y <= j+1; ++y)
+		{
+			int x_1 = x - i + 1;
+			int y_1 = y - j + 1;
+			float pixelVal = getValueImage(d_input, x, y);
+			//printf("pixel value for co-ordinates %d, %d is %f\n", x + i, y + j, pixelVal);
+
+			kernel_values_m3[x_1 + msize * y_1] = pixelVal;
+		}
+	}
+
+	for (int s = 0; s < 9; s++)
+	{
+		if (kernel_values_m3[s] <= 0.5)
+			kernel_values_m3[s] = 0;
+		else
+			kernel_values_m3[s] = 1;
+	}
+
+	sort(kernel_values_m3, 9);
 	
-			
+	d_outputMedianGpu[j * countX + i] = kernel_values_m3[4];
 }
+
 // Kernel for Median filter dimension 5x5 
-__kernel void median2Kernel(__read_only image2d_t d_input, __global float* d_outputMedianGpu) 
-{
+__kernel void median2Kernel(__read_only image2d_t d_input, __global float* d_outputMedianGpu) {
+	int i = get_global_id(0);
+	int j = get_global_id(1);
+
+	size_t countX = get_global_size(0);
+	size_t countY = get_global_size(1);
 	
-	
+	int msize = 5;
+	int kernel_values_m5[25];
+	int count;
+	int temp;
+
+	for (int k = 0; k < 25; k++)
+	{
+		kernel_values_m5[k] = 0;
+	}
+
+	for (int x = i - 2; x <= i + 2; ++x)
+	{
+		for (int y = j - 2; y <= j + 2; ++y)
+		{
+			int x_1 = x - i + 2;
+			int y_1 = y - j + 2;
+			float pixelVal = getValueImage(d_input, x, y);
+			//printf("pixel value for co-ordinates %d, %d is %f\n", x + i, y + j, pixelVal);
+
+			kernel_values_m5[x_1 + msize * y_1] = pixelVal;
+
+		}
+	}
+
+	for (int s = 0; s < 25; s++)
+	{
+		if (kernel_values_m5[s] <= 0.5)
+			kernel_values_m5[s] = 0;
+		else
+			kernel_values_m5[s] = 1;
+	}
+	sort(kernel_values_m5, 25);
+
+	d_outputMedianGpu[j * countX + i] = kernel_values_m5[12];
 }
